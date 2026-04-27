@@ -170,18 +170,18 @@ opt = {
     'valid_src_data': './data/iwslt2015/dev-2012-en-vi/tst2012.en',
     'valid_trg_data': './data/iwslt2015/dev-2012-en-vi/tst2012.vi',
     'src_lang': 'en_core_web_sm',
-    'trg_lang': 'vi_core_news_lg',
+    'trg_lang': 'en_core_web_sm',
     'max_strlen': 160,
     'batchsize': 1500,
     'device': 'cuda',
     'encoder_embedding_dim': 256,
     'decoder_embedding_dim': 256,
     'hidden_dim': 512,
-    'n_layers': 2,
+    'n_layers': 6,
     'encoder_dropout': 0.5,
     'decoder_dropout': 0.5,
     'lr': 0.001,
-    'epochs': 20,
+    'epochs': 10,
     'clip': 1,
     'teacher_forcing_ratio': 0.5,
     'printevery': 200,
@@ -239,23 +239,22 @@ criterion = nn.CrossEntropyLoss(ignore_index=TRG_PAD_IDX)
 
 train_losses = []
 valid_losses = []
+bleu_scores = []
 
 for epoch in range(opt['epochs']):
     epoch_start_time = time.time()
-    total_loss = 0
-    iteration = 0
+    total_loss = []
 
     for i, batch in tqdm(enumerate(train_iter), desc=f"Training Epoch {epoch}"):
         loss = train_step(model, optimizer, criterion, batch, opt['clip'], opt['teacher_forcing_ratio'])
-        total_loss += loss
-        iteration += 1
+        total_loss.append(loss)
 
         if (i + 1) % opt['printevery'] == 0:
-            avg_loss = total_loss / opt['printevery']
+            avg_loss = np.mean(total_loss)
             print(f'epoch: {epoch:03d} - iter: {i:05d} - train loss: {avg_loss:.4f}')
             total_loss = 0
 
-    train_losses.append(total_loss / max(iteration, 1))
+    train_losses.append(np.mean(total_loss))
 
     valid_loss = evaluate(model, criterion, valid_iter)
     valid_losses.append(valid_loss)
@@ -264,23 +263,15 @@ for epoch in range(opt['epochs']):
         valid_src_data[:500], valid_trg_data[:500],
         model, SRC, TRG, device, opt['max_strlen']
     )
+    bleu_scores.append(bleuscore)
 
     elapsed = time.time() - epoch_start_time
     print(f'epoch: {epoch:03d} - valid loss: {valid_loss:.4f} - bleu score: {bleuscore:.4f} - time: {elapsed:.4f}')
 
-    os.makedirs('./models', exist_ok=True)
-    torch.save(model.state_dict(), f'./models/seq2seq_epoch_{epoch}.pth')
+# save model
+torch.save(model.state_dict(), './models3/seq2seq.pth')
 
-# === Save Losses ===
-
-os.makedirs('./models', exist_ok=True)
-with open('./models/seq2seq_train_losses.pkl', 'wb') as f:
-    pickle.dump(train_losses, f)
-with open('./models/seq2seq_valid_losses.pkl', 'wb') as f:
-    pickle.dump(valid_losses, f)
-
-# === Plot Loss Curves ===
-
+# draw training loss, validation loss dưới dạng ảnh
 import matplotlib.pyplot as plt
 
 plt.figure(figsize=(10, 5))
@@ -290,7 +281,17 @@ plt.xlabel('Epoch')
 plt.ylabel('Loss')
 plt.title('Seq2Seq Training and Validation Loss Curves')
 plt.legend()
-plt.savefig('./models/seq2seq_loss_curves.png')
+plt.savefig('./models3/seq2seq_loss_curves.png')
+plt.show()
+
+# draw bleu score dưới dạng ảnh
+plt.figure(figsize=(10, 5))
+plt.plot(bleu_scores, label='BLEU Score')
+plt.xlabel('Epoch')
+plt.ylabel('BLEU Score')
+plt.title('Seq2Seq BLEU Score Curve')
+plt.legend()
+plt.savefig('./models3/seq2seq_bleu_curve.png')
 plt.show()
 
 # === Final Evaluation ===
